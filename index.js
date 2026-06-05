@@ -34,6 +34,7 @@ const SOUL_LIST = {
 const userSteps = {};
 let api = null;
 let botStartTime = Date.now();
+let isReady = false;
 
 function encryptAES2(data) {
     try {
@@ -162,29 +163,46 @@ function formatTime(ms) {
 }
 
 async function handleMessage(event) {
-    const { senderID, threadID, body } = event;
+    const { senderID, threadID, body, isGroup } = event;
     const text = body?.trim() || "";
+    
     if (!text.startsWith(PREFIX)) return;
     
     const args = text.slice(PREFIX.length).trim().split(/\s+/);
     const cmd = args[0]?.toLowerCase();
     if (!cmd) return;
     
+    // Lấy tên nhóm nếu là group
+    let groupName = "";
+    if (isGroup) {
+        try {
+            const threadInfo = await api.getThreadInfo(threadID);
+            groupName = threadInfo.name || "Group";
+        } catch(e) {}
+    }
+    
     if (cmd === "menu") {
-        const menu = `=== SOUL HACK BOT ===
+        const menu = `╔══════════════════════════╗
+║     SOUL HACK BOT       ║
+╚══════════════════════════╝
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+📜 LENH:
+
 !info <uniq> <host> [sv] - Xem thong tin
-!add - Them soul
+!add - Them soul (tung buoc)
 !list - Danh sach soul
 !server - Danh sach server
 !ip - Xem IP bot
+
 !restart - Khoi dong lai
 !stats - Thong ke
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ CAN VPN HAN QUOC!`;
         return api.sendMessage(menu, threadID);
     }
     
     if (cmd === "list") {
-        let msg = "DANH SACH SOUL:\n";
+        let msg = "💎 DANH SACH SOUL:\n━━━━━━━━━━━━━━━━━━\n";
         for (const [k, s] of Object.entries(SOUL_LIST)) {
             msg += `${k}. ${s.name} (${s.id})\n`;
         }
@@ -192,13 +210,13 @@ async function handleMessage(event) {
     }
     
     if (cmd === "server") {
-        let msg = "DANH SACH SERVER:\n1. AMO (Mobile)\n2. ATV (Android TV)";
+        let msg = "🖥️ DANH SACH SERVER:\n1. AMO (Mobile)\n2. ATV (Android TV)";
         return api.sendMessage(msg, threadID);
     }
     
     if (cmd === "ip") {
         const ip = await getMyIP();
-        return api.sendMessage(`IP Bot: ${ip}`, threadID);
+        return api.sendMessage(`🌐 IP Bot: ${ip}`, threadID);
     }
     
     if (cmd === "info") {
@@ -206,18 +224,25 @@ async function handleMessage(event) {
         const host = args[2];
         const sv = args[3] || "1";
         
-        if (!uniq || !host) return api.sendMessage("!info <uniq_id> <host_id> [server]", threadID);
+        if (!uniq || !host) return api.sendMessage("📝 !info <uniq_id> <host_id> [server]\n\nVi du: !info ATV259217 az555lqok@gmail.com 2", threadID);
+        if (!SERVERS[sv]) return api.sendMessage("❌ Server 1-2!", threadID);
         
-        await api.sendMessage("Dang lay thong tin...", threadID);
+        await api.sendMessage("🔄 Dang lay thong tin...", threadID);
         const data = await getUserData(uniq, host, sv === "2");
         
         if (!data?.gichapo) {
-            return api.sendMessage("Khong tim thay! Kiem tra lai!", threadID);
+            return api.sendMessage("❌ Khong tim thay! Kiem tra UNIQ_ID/HOST_ID va VPN!", threadID);
         }
         
-        let msg = `THONG TIN TAI KHOAN\nServer: ${SERVERS[sv].display}\nUser: ${data.userName || 'Khong co'}\nLevel: ${data.userLevel}\nRun: ${data.runCount}\n\nSOUL:\n`;
+        let msg = `📊 THONG TIN TAI KHOAN\n━━━━━━━━━━━━━━━━━━\n`;
+        msg += `🖥️ ${SERVERS[sv].display}\n`;
+        msg += `👤 ${data.userName || 'Khong co'}\n`;
+        msg += `📊 Level: ${data.userLevel}\n`;
+        msg += `🔄 Run: ${data.runCount}\n`;
+        msg += `━━━━━━━━━━━━━━━━━━\n💎 SOUL:\n`;
         for (const [k, s] of Object.entries(SOUL_LIST)) {
-            msg += `${k}. ${s.name}: ${formatNumber(data.souls[s.id] || 0)}\n`;
+            const amt = data.souls[s.id] || 0;
+            msg += `${k}. ${s.name}: ${formatNumber(amt)}\n`;
         }
         return api.sendMessage(msg, threadID);
     }
@@ -227,57 +252,60 @@ async function handleMessage(event) {
         
         if (!step) {
             userSteps[senderID] = { step: "wait_server" };
-            return api.sendMessage("CHON SERVER:\n1. AMO\n2. ATV\nNhap so (1-2)", threadID);
+            return api.sendMessage(`📡 CHON SERVER\n━━━━━━━━━━━━━━━━━━\n1. AMO (Mobile)\n2. ATV (Android TV)\n━━━━━━━━━━━━━━━━━━\n👉 Nhap so (1-2)\n!cancel de huy`, threadID);
         }
         
         if (step.step === "wait_server") {
-            if (!SERVERS[text]) return api.sendMessage("Chon 1 hoac 2!", threadID);
+            if (!SERVERS[text]) return api.sendMessage("❌ Chon 1 hoac 2!", threadID);
             step.server = text;
             step.isATV = (text === "2");
             step.step = "wait_uniq";
-            return api.sendMessage(`Da chon: ${SERVERS[text].display}\nNhap UNIQ_ID:`, threadID);
+            return api.sendMessage(`✅ Da chon: ${SERVERS[text].display}\n━━━━━━━━━━━━━━━━━━\n🆔 Nhap UNIQ_ID:`, threadID);
         }
         
         if (step.step === "wait_uniq") {
-            if (!text) return api.sendMessage("Khong duoc trong!", threadID);
+            if (!text) return api.sendMessage("❌ Khong duoc trong!", threadID);
             step.uniq = text;
             step.step = "wait_host";
-            return api.sendMessage(`UNIQ_ID: ${text}\nNhap HOST_ID:`, threadID);
+            return api.sendMessage(`✅ UNIQ_ID: ${text}\n━━━━━━━━━━━━━━━━━━\n📧 Nhap HOST_ID:`, threadID);
         }
         
         if (step.step === "wait_host") {
-            if (!text) return api.sendMessage("Khong duoc trong!", threadID);
+            if (!text) return api.sendMessage("❌ Khong duoc trong!", threadID);
             step.host = text;
             step.step = "loading";
-            await api.sendMessage("Dang lay thong tin...", threadID);
+            await api.sendMessage("🔄 Dang lay thong tin...", threadID);
             
             const data = await getUserData(step.uniq, step.host, step.isATV);
             
             if (!data?.gichapo) {
                 delete userSteps[senderID];
-                return api.sendMessage("Khong tim thay!", threadID);
+                return api.sendMessage("❌ Khong tim thay! Kiem tra lai!", threadID);
             }
             
             step.userInfo = data;
             step.step = "wait_soul";
             
-            let msg = `THONG TIN TAI KHOAN\nUser: ${data.userName}\nLevel: ${data.userLevel}\nRun: ${data.runCount}\n\nCHON SOUL (1-8):\n`;
+            let msg = `✅ THONG TIN TAI KHOAN\n━━━━━━━━━━━━━━━━━━\n`;
+            msg += `👤 ${data.userName || 'Khong co'}\n📊 Level ${data.userLevel}\n🔄 Run ${data.runCount}\n`;
+            msg += `━━━━━━━━━━━━━━━━━━\n💎 CHON SOUL (1-8):\n`;
             for (const [k, s] of Object.entries(SOUL_LIST)) {
-                msg += `${k}. ${s.name}: ${formatNumber(data.souls[s.id] || 0)}\n`;
+                const amt = data.souls[s.id] || 0;
+                msg += `${k}. ${s.name}: ${formatNumber(amt)}\n`;
             }
             return api.sendMessage(msg, threadID);
         }
         
         if (step.step === "wait_soul") {
-            if (!SOUL_LIST[text]) return api.sendMessage("Chon 1-8!", threadID);
+            if (!SOUL_LIST[text]) return api.sendMessage("❌ Chon 1-8!", threadID);
             step.soul = SOUL_LIST[text];
             step.step = "wait_amount";
-            return api.sendMessage(`Da chon: ${step.soul.name}\nNhap so luong:`, threadID);
+            return api.sendMessage(`✅ Da chon: ${step.soul.name}\n━━━━━━━━━━━━━━━━━━\n🔢 Nhap so luong:`, threadID);
         }
         
         if (step.step === "wait_amount") {
             let amount = parseInt(text);
-            if (isNaN(amount) || amount <= 0) return api.sendMessage("Nhap so hop le!", threadID);
+            if (isNaN(amount) || amount <= 0) return api.sendMessage("❌ Nhap so hop le!", threadID);
             step.amount = amount;
             
             let newRun = step.userInfo.runCount - 1;
@@ -286,13 +314,18 @@ async function handleMessage(event) {
             step.comment = `${step.soul.id} 영혼석 우편함 수령 ${amount}`;
             step.step = "wait_confirm";
             
-            const msg = `XAC NHAN:\nServer: ${SERVERS[step.server].display}\nSoul: ${step.soul.name}\nSo luong: ${formatNumber(amount)}\nRun: ${newRun}\n\nNhap "yes" de xac nhan, "no" de huy`;
+            const msg = `🔔 XAC NHAN\n━━━━━━━━━━━━━━━━━━\n`;
+            msg += `🖥️ ${SERVERS[step.server].display}\n`;
+            msg += `💎 ${step.soul.name}\n`;
+            msg += `🔢 ${formatNumber(amount)}\n`;
+            msg += `🔄 Run: ${newRun}\n`;
+            msg += `━━━━━━━━━━━━━━━━━━\n✅ Nhap "yes" de xac nhan\n❌ Nhap "no" de huy`;
             return api.sendMessage(msg, threadID);
         }
         
         if (step.step === "wait_confirm") {
             if (text.toLowerCase() === "yes") {
-                await api.sendMessage("Dang them soul...", threadID);
+                await api.sendMessage("🚀 Dang them soul...", threadID);
                 const result = await addSoul(
                     step.uniq, step.host, step.isATV ? 'ATV' : 'AMO',
                     step.soul.id, step.amount, step.newRun, step.comment,
@@ -300,19 +333,19 @@ async function handleMessage(event) {
                 );
                 
                 let msg = "";
-                if (!result) msg = "LOI KET NOI! Can VPN Han Quoc!";
+                if (!result) msg = "❌ LOI KET NOI! Can VPN Han Quoc!";
                 else if (result.RESULT === 'OK') {
                     const newAmt = result.VALUE?.SOUL?.[step.soul.id] || '?';
-                    msg = `THANH CONG!\nDa them: ${formatNumber(step.amount)}\nTong: ${formatNumber(newAmt)}`;
+                    msg = `✅✅ THANH CONG! ✅✅\n━━━━━━━━━━━━━━━━━━\n💎 ${step.soul.name}\n➕ Da them: ${formatNumber(step.amount)}\n📊 Tong: ${formatNumber(newAmt)}`;
                 } else {
-                    msg = `THAT BAI!\nLoi: ${result.VALUE}`;
+                    msg = `❌ THAT BAI!\n🔴 ${result.VALUE || 'Khong ro'}`;
                 }
                 
                 delete userSteps[senderID];
                 return api.sendMessage(msg, threadID);
             } else {
                 delete userSteps[senderID];
-                return api.sendMessage("Da huy!", threadID);
+                return api.sendMessage("✅ Da huy!", threadID);
             }
         }
         return;
@@ -320,30 +353,32 @@ async function handleMessage(event) {
     
     if (cmd === "cancel") {
         delete userSteps[senderID];
-        return api.sendMessage("Da huy thao tac!", threadID);
+        return api.sendMessage("✅ Da huy thao tac!", threadID);
     }
     
     if (!isAdmin(senderID)) return;
     
     if (cmd === "restart") {
-        await api.sendMessage("Dang khoi dong lai...", threadID);
+        await api.sendMessage("🔄 Dang khoi dong lai...", threadID);
         process.exit(0);
     }
     
     if (cmd === "stats") {
         const uptime = formatTime(Date.now() - botStartTime);
         const ip = await getMyIP();
-        const stats = `THONG KE BOT\nUptime: ${uptime}\nIP: ${ip}\nSessions: ${Object.keys(userSteps).length}`;
+        const stats = `📊 THONG KE BOT\n━━━━━━━━━━━━━━━━━━\n⏰ Uptime: ${uptime}\n🌐 IP: ${ip}\n👥 Sessions: ${Object.keys(userSteps).length}`;
         return api.sendMessage(stats, threadID);
     }
 }
 
 const app = express();
-app.get('/', (req, res) => res.send('Bot dang chay!'));
-app.listen(3000, () => console.log('Web server port 3000'));
+app.get('/', (req, res) => res.send('🤖 Bot dang chay!'));
+app.listen(3000, () => console.log('🌐 Web server port 3000'));
 
 async function startBot() {
-    console.log("=== SOUL HACK BOT MESSENGER ===");
+    console.log("╔════════════════════════════════════╗");
+    console.log("║     SOUL HACK BOT MESSENGER       ║");
+    console.log("╚════════════════════════════════════╝");
     
     if (!FB_EMAIL || !FB_PASSWORD || FB_PASSWORD === "matkhau_cua_ban") {
         console.log("\n⚠️ VUI LONG NHAP EMAIL VA MAT KHAU FACEBOOK!");
@@ -352,37 +387,73 @@ async function startBot() {
         return;
     }
     
-    console.log(`Dang nhap voi: ${FB_EMAIL}`);
+    console.log(`📧 Dang nhap voi: ${FB_EMAIL}`);
+    console.log("🔄 Dang ket noi...\n");
     
     try {
         const { default: login } = await import('fca-unofficial');
         
         login({ email: FB_EMAIL, password: FB_PASSWORD }, (err, _api) => {
             if (err) {
-                console.log("LOI DANG NHAP:", err);
+                console.log("❌ LOI DANG NHAP:", err);
                 return;
             }
             
             api = _api;
             botStartTime = Date.now();
+            isReady = true;
             
-            console.log("DANG NHAP THANH CONG!");
-            getMyIP().then(ip => console.log(`IP Bot: ${ip}`));
-            console.log("BOT SAN SANG!\n");
+            console.log("✅ DANG NHAP THANH CONG!");
+            getMyIP().then(ip => console.log(`🌐 IP Bot: ${ip}`));
+            console.log("🎉 BOT SAN SANG!\n");
+            console.log(`📝 Prefix: ${PREFIX}`);
+            console.log(`👑 Admin: ${ADMINS.join(", ")}`);
+            console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+            
+            // Gửi tin nhắn thông báo vào tất cả các nhóm bot đang ở
+            setTimeout(async () => {
+                try {
+                    const allThreads = await api.getThreadList(50, null, ['INBOX']);
+                    for (const thread of allThreads) {
+                        if (thread.isGroup) {
+                            await api.sendMessage(`✅ 𝐁𝐎𝐓 𝐒𝐎𝐔𝐋 𝐇𝐀𝐂𝐊 𝐕𝐔̛̀𝐀 𝐊𝐄̂́𝐓 𝐍𝐎̂́𝐈 𝐓𝐇𝐀̀𝐍𝐇 𝐂𝐎̂𝐍𝐆!\n━━━━━━━━━━━━━━━━━━\n📌 𝐍𝐡𝐚̣̂𝐧 𝐥𝐞̣̂𝐧𝐡: !𝐦𝐞𝐧𝐮\n⚠️ 𝐂𝐚̂̀𝐧 𝐕𝐏𝐍 𝐇𝐚̀𝐧 𝐐𝐮𝐨̂́𝐜 đ𝐞̂̉ 𝐡𝐨𝐚̣𝐭 đ𝐨̣̂𝐧𝐠!`, thread.threadID);
+                            console.log(`✅ Đã gửi thông báo vào nhóm: ${thread.name || thread.threadID}`);
+                        }
+                    }
+                } catch(e) {
+                    console.log("Khong the gui thong bao nhom:", e);
+                }
+            }, 3000);
             
             api.listen(async (err, event) => {
-                if (err) return;
+                if (err) {
+                    console.log("Loi listen:", err);
+                    return;
+                }
+                
+                // Khi bot được thêm vào nhóm mới
+                if (event.type === 'event' && event.event === 'add') {
+                    if (event.addedParticipants.some(p => p.userFbId === api.getCurrentUserID())) {
+                        const threadID = event.threadID;
+                        const threadInfo = await api.getThreadInfo(threadID);
+                        const groupName = threadInfo.name || "nhóm";
+                        
+                        await api.sendMessage(`✅ 𝐁𝐎𝐓 𝐒𝐎𝐔𝐋 𝐇𝐀𝐂𝐊 𝐕𝐔̛̀𝐀 𝐕𝐀̀𝐎 𝐍𝐇𝐎́𝐌!\n━━━━━━━━━━━━━━━━━━\n📌 𝐍𝐡𝐨́𝐦: ${groupName}\n📌 𝐍𝐡𝐚̣̂𝐧 𝐥𝐞̣̂𝐧𝐡: !𝐦𝐞𝐧𝐮\n⚠️ 𝐂𝐚̂̀𝐧 𝐕𝐏𝐍 𝐇𝐚̀𝐧 𝐐𝐮𝐨̂́𝐜 đ𝐞̂̉ 𝐡𝐨𝐚̣𝐭 đ𝐨̣̂𝐧𝐠!`, threadID);
+                        console.log(`✅ Bot đã được thêm vào nhóm: ${groupName}`);
+                    }
+                }
+                
                 if (event.type === 'message' && event.body) {
                     try { 
                         await handleMessage(event); 
                     } catch(e) { 
-                        console.log("Loi:", e); 
+                        console.log("Loi xu ly:", e); 
                     }
                 }
             });
         });
     } catch (error) {
-        console.log("LOI:", error);
+        console.log("❌ LOI:", error);
     }
 }
 
