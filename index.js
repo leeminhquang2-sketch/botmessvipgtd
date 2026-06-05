@@ -8,7 +8,7 @@ const PREFIX = "!";
 const ADMINS = ["61590442478936"];
 
 const FB_EMAIL = "minhquangdz2012abc@gmail.com";
-const FB_PASSWORD = "matkhau_cua_ban";
+const FB_PASSWORD = "minhquangk12";
 
 const GAME_IP = "211.253.26.47";
 const GAME_PORT = "8093";
